@@ -1,0 +1,11 @@
+name: naija_street_soccer
+description: Naija Street Soccer 5v5
+publish_to: 'none'
+version: 1.0.0+1
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  uses-material-design: true
