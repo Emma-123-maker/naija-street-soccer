@@ -11,7 +11,7 @@ jobs:
       - name: Fix missing android folder
         run: |
           mv lib/main.dart /tmp/main.dart
-          flutter create. --project-name naija_street_soccer --platforms=android
+          flutter create . --project-name naija_street_soccer --platforms=android
           mv /tmp/main.dart lib/main.dart
           flutter pub get
       - run: flutter build apk --release
