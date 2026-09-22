@@ -8,7 +8,12 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
-      - run: flutter pub get
+      - name: Fix missing android folder
+        run: |
+          mv lib/main.dart /tmp/main.dart
+          flutter create. --project-name naija_street_soccer --platforms=android
+          mv /tmp/main.dart lib/main.dart
+          flutter pub get
       - run: flutter build apk --release
       - uses: actions/upload-artifact@v4
         with:
