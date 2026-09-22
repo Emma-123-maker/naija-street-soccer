@@ -1,242 +1,235 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
+import 'dart:math';
+import 'dart:async';
 
-void main() => runApp(const MaterialApp(debugShowCheckedModeBanner: false, home: NaijaStreetSoccer()));
+void main() => runApp(NaijaStreetSoccer());
 
-class PlayerData {
-  Offset pos;
-  Offset target;
-  bool isUserTeam;
-  bool hasBall = false;
-  PlayerData(this.pos, this.isUserTeam) : target = pos;
+class NaijaStreetSoccer extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: GameScreen(),
+    );
+  }
 }
 
-class NaijaStreetSoccer extends StatefulWidget {
-  const NaijaStreetSoccer({super.key});
-  @override State<NaijaStreetSoccer> createState() => _NaijaStreetSoccerState();
+class GameScreen extends StatefulWidget {
+  @override
+  _GameScreenState createState() => _GameScreenState();
 }
 
-class _NaijaStreetSoccerState extends State<NaijaStreetSoccer> with SingleTickerProviderStateMixin {
-  late AnimationController gameLoop;
-
-  List<PlayerData> myTeam = [];
-  List<PlayerData> enemyTeam = [];
-  Offset ballPos = const Offset(200, 400);
-  Offset ballVel = Offset.zero;
-  int myScore = 0;
-  int enemyScore = 0;
-  int controlledIndex = 0; // you control 1 player
-  Offset joystickDelta = Offset.zero;
-  String msg = "Naija Street Soccer - Shooting Stars!";
+class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateMixin {
+  // YOU - IMPROVED!
+  double youX = 0.5, youY = 0.8;
+  double youSpeed = 0.018; // Was 0.008 - NOW 2x FASTER!
+  
+  // AI Opponent
+  double aiX = 0.5, aiY = 0.2;
+  double aiSpeed = 0.006; // Was 0.01 - NOW SLOWER!
+  
+  // Ball
+  double ballX = 0.5, ballY = 0.5;
+  double ballVX = 0, ballVY = 0;
+  bool ballWithYou = false;
+  bool ballWithAI = false;
+  
+  // Score
+  int youScore = 0, aiScore = 0;
+  
+  // Controls
+  double joyX = 0, joyY = 0;
+  bool isShooting = false;
+  
+  Timer? gameLoop;
 
   @override
   void initState() {
     super.initState();
-    // 5v5 Setup
-    myTeam = [
-      PlayerData(const Offset(200, 700), true), // you - striker
-      PlayerData(const Offset(100, 600), true),
-      PlayerData(const Offset(300, 600), true),
-      PlayerData(const Offset(100, 750), true),
-      PlayerData(const Offset(300, 750), true),
-    ];
-    enemyTeam = [
-      PlayerData(const Offset(200, 100), false),
-      PlayerData(const Offset(100, 200), false),
-      PlayerData(const Offset(300, 200), false),
-      PlayerData(const Offset(100, 80), false),
-      PlayerData(const Offset(300, 80), false),
-    ];
-    controlledIndex = 0;
-
-    gameLoop = AnimationController(vsync: this, duration: const Duration(seconds: 1))..repeat();
-    gameLoop.addListener(updateGame);
+    startGame();
   }
 
-  void updateGame() {
-    setState(() {
-      // 1. Move controlled player with joystick
-      if (joystickDelta!= Offset.zero) {
-        myTeam[controlledIndex].pos += joystickDelta * 4;
-      }
+  void startGame() {
+    gameLoop = Timer.periodic(Duration(milliseconds: 16), (t) {
+      setState(() {
+        // Move YOU with joystick - FASTER!
+        youX += joyX * youSpeed;
+        youY += joyY * youSpeed;
+        youX = youX.clamp(0.05, 0.95);
+        youY = youY.clamp(0.05, 0.95);
 
-      // 2. Ball physics
-      ballPos += ballVel;
-      ballVel *= 0.98; // friction
-      if (ballVel.distance < 0.5) ballVel = Offset.zero;
-
-      // Keep ball in field
-      ballPos = Offset(ballPos.dx.clamp(20, 380), ballPos.dy.clamp(20, 780));
-
-      // 3. Check who has ball
-      for (var p in [...myTeam,...enemyTeam]) p.hasBall = false;
-      for (var p in [...myTeam,...enemyTeam]) {
-        if ((p.pos - ballPos).distance < 22) {
-          p.hasBall = true;
-          ballPos = p.pos + const Offset(0, -12); // ball at feet
-          // Auto-switch control to ball holder if my team
-          if (p.isUserTeam) {
-            controlledIndex = myTeam.indexOf(p);
-          }
-          break;
+        // Move AI (simple)
+        if (!ballWithAI) {
+          if (aiX < ballX) aiX += aiSpeed;
+          if (aiX > ballX) aiX -= aiSpeed;
+          if (aiY < ballY) aiY += aiSpeed;
+          if (aiY > ballY) aiY -= aiSpeed;
+        } else {
+          // AI attacks your goal
+          if (aiY < 0.9) aiY += aiSpeed * 0.8;
         }
-      }
 
-      // 4. Enemy AI - chase ball
-      for (var enemy in enemyTeam) {
-        if (!enemy.hasBall) {
-          var dir = ballPos - enemy.pos;
-          if (dir.distance > 5) {
-            enemy.pos += dir / dir.distance * 1.8;
-          }
-          // If enemy has ball, run to your goal and shoot
-          if ((enemy.pos - ballPos).distance < 25) {
-            ballVel = Offset((Random().nextDouble() - 0.5) * 10, 15); // shoot down
-          }
+        // Ball physics
+        if (!ballWithYou && !ballWithAI) {
+          ballX += ballVX;
+          ballY += ballVY;
+          ballVX *= 0.98;
+          ballVY *= 0.98;
+          if (ballVX.abs() < 0.001) ballVX = 0;
+          if (ballVY.abs() < 0.001) ballVY = 0;
         }
-      }
 
-      // 5. My team AI - support
-      for (int i=0; i<myTeam.length; i++) {
-        if (i == controlledIndex) continue;
-        if (!myTeam[i].hasBall) {
-          // move slightly towards ball but keep formation
-          var dir = ballPos - myTeam[i].pos;
-          if (dir.distance > 120) {
-            myTeam[i].pos += dir / dir.distance * 0.6;
-          }
+        // Check ball pickup
+        if ((youX - ballX).abs() < 0.07 && (youY - ballY).abs() < 0.07) {
+          ballWithYou = true; ballWithAI = false;
         }
-      }
+        if ((aiX - ballX).abs() < 0.07 && (aiY - ballY).abs() < 0.07) {
+          ballWithAI = true; ballWithYou = false;
+          // AI shoots after 1 sec
+          Future.delayed(Duration(milliseconds: 800), () {
+            if (ballWithAI) aiShoot();
+          });
+        }
 
-      // 6. Goal Check (Top goal = enemy defends, Bottom goal = you defend)
-      bool inTopGoal = ballPos.dy < 30 && ballPos.dx > 140 && ballPos.dx < 260;
-      bool inBottomGoal = ballPos.dy > 770 && ballPos.dx > 140 && ballPos.dx < 260;
+        // Ball follows player
+        if (ballWithYou) { ballX = youX; ballY = youY - 0.05; }
+        if (ballWithAI) { ballX = aiX; ballY = aiY + 0.05; }
 
-      if (inTopGoal) {
-        myScore++;
-        msg = "GOAL!!! SHOOTING STARS SCORED! 🔥";
-        resetRound();
-      }
-      if (inBottomGoal) {
-        enemyScore++;
-        msg = "Goal conceded... defend!";
-        resetRound();
-      }
+        // GOAL CHECK
+        if (ballY < 0.02 && ballX > 0.35 && ballX < 0.65) {
+          youScore++; resetBall();
+        }
+        if (ballY > 0.98 && ballX > 0.35 && ballX < 0.65) {
+          aiScore++; resetBall();
+        }
+
+        // Wall bounce
+        if (ballX < 0.02 || ballX > 0.98) ballVX *= -1;
+      });
     });
   }
 
-  void resetRound() {
-    ballPos = const Offset(200, 400);
-    ballVel = Offset.zero;
-    Future.delayed(const Duration(seconds: 1), () => setState(() => msg = "First to 3 wins!"));
-  }
-
-  void doPass() {
-    if (!myTeam[controlledIndex].hasBall) return;
-    // Find nearest teammate
-    PlayerData? best;
-    double bestDist = 9999;
-    for (var teammate in myTeam) {
-      if (teammate == myTeam[controlledIndex]) continue;
-      double d = (teammate.pos - myTeam[controlledIndex].pos).distance;
-      if (d < bestDist) { bestDist = d; best = teammate; }
-    }
-    if (best!= null) {
-      ballVel = (best.pos - ballPos) / 8;
-      setState(() => msg = "Nice pass!");
+  void resetBall() {
+    ballX = 0.5; ballY = 0.5;
+    ballVX = 0; ballVY = 0;
+    ballWithYou = false; ballWithAI = false;
+    if (youScore >= 3 || aiScore >= 3) {
+      gameLoop?.cancel();
+      showResult();
     }
   }
 
-  void doShoot() {
-    if (!myTeam[controlledIndex].hasBall) return;
-    // Shoot to top goal with some spread
-    double spread = (Random().nextDouble() - 0.5) * 60;
-    Offset goalCenter = Offset(200 + spread, 0);
-    ballVel = (goalCenter - ballPos) / 6;
-    ballVel = Offset(ballVel.dx.clamp(-20, 20), ballVel.dy.clamp(-30, -10));
-    setState(() => msg = "SHOT!!! ⚽");
+  void showResult() {
+    showDialog(context: context, barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        title: Text(youScore >= 3 ? "YOU WIN! 🇳🇬🔥" : "YOU LOSE 😭"),
+        content: Text("Score $youScore : $aiScore"),
+        actions: [TextButton(onPressed: (){
+          Navigator.pop(context);
+          setState((){youScore=0; aiScore=0;}); startGame();
+        }, child: Text("PLAY AGAIN"))],
+      ));
   }
 
-  @override
-  void dispose() { gameLoop.dispose(); super.dispose(); }
+  void shoot() {
+    if (!ballWithYou) return;
+    setState(() {
+      ballWithYou = false;
+      // SUPER SHOT - MUCH STRONGER!
+      ballVY = -0.035; // Was -0.015
+      ballVX = (Random().nextDouble() - 0.5) * 0.01;
+    });
+  }
+
+  void aiShoot() {
+    setState(() {
+      ballWithAI = false;
+      ballVY = 0.02;
+      ballVX = (Random().nextDouble() - 0.5) * 0.015;
+    });
+  }
+
+  void pass() {
+    if (!ballWithYou) return;
+    setState(() {
+      ballWithYou = false;
+      ballVX = (Random().nextDouble() - 0.5) * 0.02;
+      ballVY = -0.02;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF2E7D32),
       body: Stack(
         children: [
-          // FIELD
-          Positioned.fill(child: CustomPaint(painter: FieldPainter())),
-
+          // PITCH
+          Container(color: Color(0xFF2E7D32)),
+          CustomPaint(size: Size.infinite, painter: PitchPainter()),
+          
+          // Score
+          Positioned(top: 40, left: 0, right: 0,
+            child: Center(child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+              decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(20)),
+              child: Text("$youScore : $aiScore", style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold)),
+            ))),
+          Positioned(top: 75, left: 0, right: 0, child: Center(child: Text("First to 3 wins!", style: TextStyle(color: Colors.white)))),
+          
           // Goals
-          Positioned(top: 0, left: 140, child: Container(width: 120, height: 10, color: Colors.white)),
-          Positioned(bottom: 0, left: 140, child: Container(width: 120, height: 10, color: Colors.white)),
-
-          // Players - Enemy (Red)
-         ...enemyTeam.map((p) => Positioned(
-            left: p.pos.dx - 14, top: p.pos.dy - 14,
-            child: CircleAvatar(radius: 14, backgroundColor: p.hasBall? Colors.orange : Colors.red, child: const Text("E", style: TextStyle(fontSize: 10, color: Colors.white)))
-          )),
-
-          // Players - My Team (Blue)
-         ...myTeam.asMap().entries.map((e) {
-            var p = e.value;
-            bool isControlled = e.key == controlledIndex;
-            return Positioned(
-              left: p.pos.dx - 15, top: p.pos.dy - 15,
-              child: Container(
-                width: 30, height: 30,
-                decoration: BoxDecoration(
-                  color: p.hasBall? Colors.yellow : (isControlled? Colors.blue[700] : Colors.blue[300]),
-                  shape: BoxShape.circle,
-                  border: isControlled? Border.all(color: Colors.white, width: 3) : null,
-                ),
-                child: Center(child: Text(isControlled? "YOU" : "S", style: const TextStyle(fontSize: 8, color: Colors.white, fontWeight: FontWeight.bold))),
-              ),
-            );
-          }),
+          Positioned(top: 0, left: MediaQuery.of(context).size.width*0.35, child: Container(width: MediaQuery.of(context).size.width*0.3, height: 10, color: Colors.white)),
+          Positioned(bottom: 0, left: MediaQuery.of(context).size.width*0.35, child: Container(width: MediaQuery.of(context).size.width*0.3, height: 10, color: Colors.white)),
 
           // Ball
-          Positioned(left: ballPos.dx - 9, top: ballPos.dy - 9, child: Container(width: 18, height: 18, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle), child: const Center(child: Text("⚽", style: TextStyle(fontSize: 12))))),
+          Positioned(left: MediaQuery.of(context).size.width*ballX - 10, top: MediaQuery.of(context).size.height*ballY - 10,
+            child: Container(width: 20, height: 20, decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, border: Border.all(color: Colors.black)))),
+          
+          // YOU - Blue
+          Positioned(left: MediaQuery.of(context).size.width*youX - 20, top: MediaQuery.of(context).size.height*youY - 20,
+            child: Container(width: 40, height: 40, decoration: BoxDecoration(color: Colors.blue, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3)),
+              child: Center(child: Text("YOU", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold))))),
+          
+          // AI - Red
+          Positioned(left: MediaQuery.of(context).size.width*aiX - 20, top: MediaQuery.of(context).size.height*aiY - 20,
+            child: Container(width: 40, height: 40, decoration: BoxDecoration(color: Colors.red, shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 3)),
+              child: Center(child: Text("AI", style: TextStyle(color: Colors.white, fontSize: 10))))),
 
-          // Score
-          SafeArea(child: Center(child: Container(padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8), decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(20)), child: Text("$enemyScore : $myScore", style: const TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.bold))))),
-          SafeArea(child: Padding(padding: const EdgeInsets.only(top: 50), child: Center(child: Text(msg, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))))),
-
-          // JOYSTICK (Bottom Left)
-          Positioned(
-            left: 20, bottom: 100,
+          // CONTROLS - Fixed layout!
+          Positioned(bottom: 20, left: 20, child: Container(
+            width: 110, height: 110,
+            decoration: BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
             child: GestureDetector(
-              onPanUpdate: (d) { setState(() => joystickDelta = d.delta); },
-              onPanEnd: (_) => setState(() => joystickDelta = Offset.zero),
-              child: Container(width: 110, height: 110, decoration: BoxDecoration(color: Colors.black38, shape: BoxShape.circle, border: Border.all(color: Colors.white30)), child: const Icon(Icons.gamepad, color: Colors.white54, size: 50)),
-            ),
-          ),
-
-          // PASS & SHOOT (Bottom Right)
-          Positioned(
-            right: 20, bottom: 90,
-            child: Column(
-              children: [
-                ElevatedButton(onPressed: doShoot, style: ElevatedButton.styleFrom(shape: const CircleBorder(), padding: const EdgeInsets.all(28), backgroundColor: Colors.red), child: const Text("SHOOT", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
-                const SizedBox(height: 15),
-                ElevatedButton(onPressed: doPass, style: ElevatedButton.styleFrom(shape: const CircleBorder(), padding: const EdgeInsets.all(28), backgroundColor: Colors.blue), child: const Text("PASS", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))),
-              ],
-            ),
-          ),
+              onPanUpdate: (d) {
+                setState(() {
+                  joyX = (d.localPosition.dx - 55) / 55;
+                  joyY = (d.localPosition.dy - 55) / 55;
+                  if (joyX > 1) joyX = 1; if (joyX < -1) joyX = -1;
+                  if (joyY > 1) joyY = 1; if (joyY < -1) joyY = -1;
+                });
+              },
+              onPanEnd: (_) => setState((){joyX=0; joyY=0;}),
+              child: Icon(Icons.gamepad, color: Colors.white70, size: 50),
+            ))),
+          
+          Positioned(bottom: 100, right: 20, child: GestureDetector(onTap: shoot,
+            child: Container(width: 80, height: 80, decoration: BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+              child: Center(child: Text("SHOOT", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))))),
+          
+          Positioned(bottom: 20, right: 20, child: GestureDetector(onTap: pass,
+            child: Container(width: 80, height: 80, decoration: BoxDecoration(color: Colors.blueAccent, shape: BoxShape.circle),
+              child: Center(child: Text("PASS", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)))))),
         ],
       ),
     );
   }
 }
 
-class FieldPainter extends CustomPainter {
-  @override void paint(Canvas canvas, Size size) {
-    var paint = Paint()..color = Colors.white30..style = PaintingStyle.stroke..strokeWidth = 2;
-    canvas.drawRect(Rect.fromLTWH(10, 10, size.width-20, size.height-20), paint);
-    canvas.drawLine(Offset(0, size.height/2), Offset(size.width, size.height/2), paint);
-    canvas.drawCircle(Offset(size.width/2, size.height/2), 50, paint);
+class PitchPainter extends CustomPainter {
+  @override
+  void paint(Canvas c, Size s) {
+    final p = Paint()..color = Colors.white54..style = PaintingStyle.stroke..strokeWidth = 2;
+    c.drawLine(Offset(0, s.height/2), Offset(s.width, s.height/2), p);
+    c.drawCircle(Offset(s.width/2, s.height/2), 60, p);
   }
-  @override bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  @override bool shouldRepaint(_) => false;
 }
